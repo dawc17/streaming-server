@@ -330,7 +330,20 @@ async function initPlayer() {
       throw new Error(`SRS error ${json.code}: ${json.error || resp.statusText}`);
     }
 
-    await pc.setRemoteDescription({ type: 'answer', sdp: json.sdp });
+    // On Windows, Docker Desktop can't route the host's own LAN IP back through
+    // its NAT — so WebRTC ICE fails when opening the page from localhost.
+    // Fix: replace the candidate IP in the SDP answer with 127.0.0.1.
+    let answerSdp = json.sdp;
+    const h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') {
+      answerSdp = answerSdp.replace(
+        /^(a=candidate:\S+ \S+ \S+ \S+ )(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(\s)/gm,
+        '$1127.0.0.1$3'
+      );
+      console.log('[WebRTC] patched SDP candidate → 127.0.0.1 (localhost workaround)');
+    }
+
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
   } catch (err) {
     console.error('[WebRTC]', err);
@@ -355,3 +368,186 @@ retryBtn.addEventListener('click', initPlayer);
 
 // ── Start ─────────────────────────────────────────────────
 initPlayer();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERACTIVE COMMAND PANEL
+// Sends viewer commands to the sandbox backend → tmux session
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CMD_CONFIG = {
+  // Relative URL — routed through nginx on the same host:port as the page.
+  // This means no extra firewall rules are needed and it works from any machine.
+  apiBase: '',
+  cooldown: 2000, // ms — must match backend RATE_LIMIT
+};
+
+// ── DOM refs (command panel) ─────────────────────────────
+const cmdInput       = document.getElementById('cmd-input');
+const cmdSendBtn     = document.getElementById('cmd-send');
+const cmdFeedback    = document.getElementById('cmd-feedback');
+const cmdHistory     = document.getElementById('cmd-history');
+const cmdCooldownBar = document.getElementById('cmd-cooldown-bar');
+const cmdRateBadge   = document.getElementById('cmd-rate');
+const cmdWlToggle    = document.getElementById('cmd-whitelist-toggle');
+const cmdWlContainer = document.getElementById('cmd-whitelist');
+
+let cmdCooldownTimer = null;
+let cmdOnCooldown    = false;
+
+// ── Send command ──────────────────────────────────────────
+async function sendCommand() {
+  const cmd = cmdInput.value.trim();
+  if (!cmd || cmdOnCooldown) return;
+
+  cmdSendBtn.disabled = true;
+  cmdInput.disabled   = true;
+
+  try {
+    const resp = await fetch(`${CMD_CONFIG.apiBase}/api/command`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ command: cmd }),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+
+    if (resp.ok && data.ok) {
+      showCmdFeedback(`✓ Executed: ${cmd}`, 'success');
+      addHistoryEntry(cmd);
+      cmdInput.value = '';
+      startCooldown();
+    } else {
+      showCmdFeedback(`✗ ${data.error || 'Unknown error'}`, 'error');
+      cmdSendBtn.disabled = false;
+      cmdInput.disabled   = false;
+    }
+  } catch (err) {
+    showCmdFeedback('✗ Backend unreachable — is the sandbox container running?', 'error');
+    cmdSendBtn.disabled = false;
+    cmdInput.disabled   = false;
+  }
+
+  cmdInput.focus();
+}
+
+// ── Cooldown bar animation ────────────────────────────────
+function startCooldown() {
+  cmdOnCooldown = true;
+  cmdRateBadge.textContent = 'COOLDOWN';
+  cmdRateBadge.classList.add('cooldown');
+  cmdCooldownBar.style.transition = 'none';
+  cmdCooldownBar.style.width = '100%';
+
+  // Force reflow then animate to 0
+  void cmdCooldownBar.offsetWidth;
+  cmdCooldownBar.style.transition = `width ${CMD_CONFIG.cooldown}ms linear`;
+  cmdCooldownBar.style.width = '0%';
+
+  clearTimeout(cmdCooldownTimer);
+  cmdCooldownTimer = setTimeout(() => {
+    cmdOnCooldown = false;
+    cmdSendBtn.disabled = false;
+    cmdInput.disabled   = false;
+    cmdRateBadge.textContent = 'READY';
+    cmdRateBadge.classList.remove('cooldown');
+    cmdInput.focus();
+  }, CMD_CONFIG.cooldown);
+}
+
+// ── Feedback toast ────────────────────────────────────────
+let feedbackTimeout = null;
+function showCmdFeedback(msg, type) {
+  clearTimeout(feedbackTimeout);
+  cmdFeedback.textContent = msg;
+  cmdFeedback.className   = `cmd-feedback visible ${type}`;
+  feedbackTimeout = setTimeout(() => {
+    cmdFeedback.className = 'cmd-feedback';
+  }, 4000);
+}
+
+// ── History list ──────────────────────────────────────────
+function addHistoryEntry(cmd) {
+  // Remove the "empty" placeholder
+  const empty = cmdHistory.querySelector('.cmd-history-empty');
+  if (empty) empty.remove();
+
+  const entry = document.createElement('div');
+  entry.className = 'cmd-entry';
+
+  const now = new Date();
+  const ts = [
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join(':');
+
+  entry.innerHTML = `
+    <div class="cmd-entry-left">
+      <span class="cmd-entry-prompt">❯</span>
+      <span class="cmd-entry-text">${escapeHtml(cmd)}</span>
+    </div>
+    <span class="cmd-entry-time">${ts}</span>
+  `;
+
+  // Click to re-populate input
+  entry.addEventListener('click', () => {
+    cmdInput.value = cmd;
+    cmdInput.focus();
+  });
+
+  cmdHistory.prepend(entry);
+
+  // Cap visible entries
+  while (cmdHistory.children.length > 30) {
+    cmdHistory.removeChild(cmdHistory.lastChild);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ── Whitelist panel ───────────────────────────────────────
+async function loadWhitelist() {
+  try {
+    const resp = await fetch(`${CMD_CONFIG.apiBase}/api/whitelist`);
+    const data = await resp.json();
+    if (data.commands) {
+      cmdWlContainer.innerHTML = data.commands
+        .map((c) => `<span class="cmd-wl-tag">${c}</span>`)
+        .join('');
+    }
+  } catch {
+    cmdWlContainer.innerHTML =
+      '<span style="color:var(--text-muted);font-size:0.65rem;">Could not load whitelist</span>';
+  }
+}
+
+cmdWlToggle.addEventListener('click', () => {
+  const isOpen = cmdWlContainer.classList.toggle('open');
+  cmdWlToggle.textContent = isOpen ? 'ALLOWED COMMANDS ▴' : 'ALLOWED COMMANDS ▾';
+  if (isOpen && cmdWlContainer.children.length === 0) {
+    loadWhitelist();
+  }
+});
+
+// ── Event listeners ───────────────────────────────────────
+cmdSendBtn.addEventListener('click', sendCommand);
+
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    sendCommand();
+  }
+});
+
+// Clicking a whitelist tag fills the input
+cmdWlContainer.addEventListener('click', (e) => {
+  if (e.target.classList.contains('cmd-wl-tag')) {
+    cmdInput.value = e.target.textContent + ' ';
+    cmdInput.focus();
+  }
+});
+

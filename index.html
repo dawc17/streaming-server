@@ -95,6 +95,9 @@
       </div>
     </div>
 
+    <!-- ═══ STREAM LAYOUT (player + command sidebar) ═══ -->
+    <div class="stream-layout">
+
     <!-- ═══ MAIN PLAYER ═══ -->
     <main class="main-content">
       <div class="player-container">
@@ -180,6 +183,57 @@
 
       </div>
     </main>
+
+    <!-- ═══ COMMAND SIDEBAR ═══ -->
+    <aside class="command-sidebar">
+      <div class="command-panel">
+
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-icon">▸</span>
+            <span class="panel-title">TERMINAL COMMAND</span>
+          </div>
+          <div class="panel-badges">
+            <span class="panel-badge" id="cmd-rate">READY</span>
+          </div>
+        </div>
+
+        <div class="cmd-input-row">
+          <span class="cmd-prompt">$</span>
+          <input
+            type="text"
+            id="cmd-input"
+            class="cmd-input"
+            placeholder="Type a Linux command…"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="200"
+          />
+          <button id="cmd-send" class="cmd-send-btn">
+            <span class="send-icon">⏎</span>
+            <span class="send-label">EXEC</span>
+          </button>
+        </div>
+
+        <div class="cmd-cooldown-bar" id="cmd-cooldown-bar"></div>
+
+        <div class="cmd-feedback" id="cmd-feedback"></div>
+
+        <div class="cmd-history" id="cmd-history">
+          <div class="cmd-history-empty">No commands sent yet</div>
+        </div>
+
+        <div class="cmd-footer-row">
+          <button class="cmd-whitelist-toggle" id="cmd-whitelist-toggle">
+            ALLOWED COMMANDS ▾
+          </button>
+          <div class="cmd-whitelist" id="cmd-whitelist"></div>
+        </div>
+
+      </div>
+    </aside>
+
+    </div><!-- /.stream-layout -->
 
     <!-- ═══ FOOTER ═══ -->
     <footer class="site-footer">

@@ -6,13 +6,18 @@
   <title>Live Stream</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+  <!-- Atmospheric layers -->
   <div class="noise-overlay" aria-hidden="true"></div>
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="vignette-overlay" aria-hidden="true"></div>
 
   <div class="page-wrapper">
+
+    <!-- ═══ HEADER ═══ -->
     <header class="site-header">
       <div class="header-inner">
 
@@ -22,67 +27,179 @@
             <span class="bar"></span>
             <span class="bar"></span>
             <span class="bar"></span>
+            <span class="bar"></span>
           </div>
-          <span class="logo-text">BROADCAST</span>
+          <span class="logo-text">BROADCAST<span class="logo-dot">.</span></span>
         </div>
 
         <div class="header-center">
           <span id="live-badge" class="live-badge hidden">
             <span class="pulse-ring"></span>
-            LIVE
+            <span class="live-text">LIVE</span>
+          </span>
+          <span id="connecting-badge" class="connecting-badge hidden">
+            <span class="conn-dot"></span>
+            CONNECTING
           </span>
         </div>
 
         <div class="header-right">
-          <span class="clock" id="clock"></span>
+          <div class="header-data">
+            <span class="header-label">LOCAL</span>
+            <span class="clock" id="clock"></span>
+          </div>
         </div>
 
       </div>
+      <div class="header-line" aria-hidden="true">
+        <div class="header-line-glow"></div>
+      </div>
     </header>
 
+    <!-- ═══ TELEMETRY BAR ═══ -->
+    <div class="telemetry-bar">
+      <div class="telemetry-inner">
+        <div class="tele-item">
+          <span class="tele-label">PROTOCOL</span>
+          <span class="tele-value" id="tele-protocol">WHEP/WebRTC</span>
+        </div>
+        <div class="tele-sep"></div>
+        <div class="tele-item">
+          <span class="tele-label">SIGNAL</span>
+          <span class="tele-value" id="tele-signal">
+            <span class="signal-indicator" id="signal-indicator">
+              <span class="sig-bar"></span>
+              <span class="sig-bar"></span>
+              <span class="sig-bar"></span>
+              <span class="sig-bar"></span>
+              <span class="sig-bar"></span>
+            </span>
+            <span id="signal-text">—</span>
+          </span>
+        </div>
+        <div class="tele-sep"></div>
+        <div class="tele-item">
+          <span class="tele-label">UPTIME</span>
+          <span class="tele-value mono-num" id="tele-uptime">00:00:00</span>
+        </div>
+        <div class="tele-sep"></div>
+        <div class="tele-item">
+          <span class="tele-label">FRAMES</span>
+          <span class="tele-value mono-num" id="tele-frames">0</span>
+        </div>
+        <div class="tele-sep"></div>
+        <div class="tele-item">
+          <span class="tele-label">CODEC</span>
+          <span class="tele-value" id="tele-codec">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ MAIN PLAYER ═══ -->
     <main class="main-content">
       <div class="player-container">
 
-        <div class="player-wrapper" id="player-wrapper">
-          <video id="video-player" autoplay muted controls playsinline></video>
+        <div class="player-frame">
+          <!-- Animated corner brackets -->
+          <div class="corner corner-tl" aria-hidden="true"></div>
+          <div class="corner corner-tr" aria-hidden="true"></div>
+          <div class="corner corner-bl" aria-hidden="true"></div>
+          <div class="corner corner-br" aria-hidden="true"></div>
 
-          <div id="overlay" class="overlay">
-            <div class="overlay-content">
-              <div id="loading-spinner" class="spinner hidden"></div>
-              <div id="offline-message" class="offline-message">
-                <p class="off-air-text">OFF AIR</p>
-                <div class="offline-sub-group">
-                  <span class="offline-dot"></span>
-                  <p class="offline-sub">WAITING FOR SIGNAL</p>
-                </div>
-                <button id="retry-btn" class="retry-btn">↺ &nbsp;RETRY</button>
+          <!-- Animated border trace -->
+          <svg class="border-trace" aria-hidden="true" preserveAspectRatio="none">
+            <rect class="trace-rect" x="0" y="0" width="100%" height="100%" fill="none" />
+          </svg>
+
+          <div class="player-wrapper" id="player-wrapper">
+            <video id="video-player" autoplay muted controls playsinline></video>
+
+            <!-- HUD overlay elements (visible when live) -->
+            <div class="hud-overlay" id="hud-overlay" aria-hidden="true">
+              <div class="hud-tl">
+                <span class="hud-item" id="hud-res">—</span>
+              </div>
+              <div class="hud-tr">
+                <span class="hud-item hud-rec" id="hud-rec">● REC</span>
+              </div>
+              <div class="hud-bl">
+                <span class="hud-item" id="hud-timecode">00:00:00:00</span>
+              </div>
+              <div class="hud-br">
+                <span class="hud-item" id="hud-bitrate">— kbps</span>
               </div>
             </div>
-          </div>
 
-          <div class="scanlines" aria-hidden="true"></div>
+            <!-- Offline / Loading overlay -->
+            <div id="overlay" class="overlay">
+              <div class="overlay-content">
+                <div id="loading-spinner" class="spinner hidden">
+                  <div class="spinner-ring"></div>
+                  <div class="spinner-ring spinner-ring-2"></div>
+                  <div class="spinner-center-dot"></div>
+                </div>
+                <div id="offline-message" class="offline-message">
+                  <div class="glitch-container">
+                    <p class="off-air-text" data-text="OFF AIR">OFF AIR</p>
+                  </div>
+                  <div class="offline-sub-group">
+                    <span class="offline-dot"></span>
+                    <p class="offline-sub" id="offline-sub">AWAITING SIGNAL</p>
+                  </div>
+                  <div class="interference-bars" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span><span></span>
+                  </div>
+                  <button id="retry-btn" class="retry-btn">
+                    <span class="retry-icon">⟳</span>
+                    <span>RETRY CONNECTION</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Scanlines & screen effects -->
+            <div class="scanlines" aria-hidden="true"></div>
+            <div class="screen-flicker" aria-hidden="true"></div>
+          </div>
         </div>
 
+        <!-- ═══ STREAM INFO BAR ═══ -->
         <div class="stream-info">
           <div class="stream-meta">
             <h1 class="stream-title" id="stream-title">Live Stream</h1>
+            <div class="stream-tags">
+              <span class="tag tag-accent" id="viewer-quality">WEBRTC</span>
+              <span class="tag tag-dim">SUB-SECOND LATENCY</span>
+            </div>
           </div>
-          <div class="stream-stats">
-            <span id="viewer-quality" class="stat-badge hidden">AUTO</span>
-            <span class="stream-url-badge"><code id="stream-url-display"></code></span>
+          <div class="stream-endpoint">
+            <span class="endpoint-label">ENDPOINT</span>
+            <code class="endpoint-url" id="stream-url-display"></code>
           </div>
         </div>
 
       </div>
     </main>
 
+    <!-- ═══ FOOTER ═══ -->
     <footer class="site-footer">
       <div class="footer-inner">
-        <span>SRS</span>
-        <span class="footer-sep">◆</span>
-        <span>WebRTC</span>
-        <span class="footer-sep">◆</span>
-        <span>WHEP</span>
+        <div class="footer-left">
+          <span class="footer-tech">SRS</span>
+          <span class="footer-sep">◈</span>
+          <span class="footer-tech">WebRTC</span>
+          <span class="footer-sep">◈</span>
+          <span class="footer-tech">WHEP</span>
+        </div>
+        <div class="footer-right">
+          <span class="footer-status" id="footer-status">
+            <span class="footer-status-dot"></span>
+            SYSTEM READY
+          </span>
+        </div>
+      </div>
+      <div class="footer-line" aria-hidden="true">
+        <div class="footer-line-glow"></div>
       </div>
     </footer>
   </div>

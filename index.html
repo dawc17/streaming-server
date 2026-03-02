@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Stream</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="noise-overlay" aria-hidden="true"></div>
+
+  <div class="page-wrapper">
+    <header class="site-header">
+      <div class="header-inner">
+
+        <div class="logo">
+          <div class="signal-bars" aria-hidden="true">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+          </div>
+          <span class="logo-text">BROADCAST</span>
+        </div>
+
+        <div class="header-center">
+          <span id="live-badge" class="live-badge hidden">
+            <span class="pulse-ring"></span>
+            LIVE
+          </span>
+        </div>
+
+        <div class="header-right">
+          <span class="clock" id="clock"></span>
+        </div>
+
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div class="player-container">
+
+        <div class="player-wrapper" id="player-wrapper">
+          <video id="video-player" autoplay muted controls playsinline></video>
+
+          <div id="overlay" class="overlay">
+            <div class="overlay-content">
+              <div id="loading-spinner" class="spinner hidden"></div>
+              <div id="offline-message" class="offline-message">
+                <p class="off-air-text">OFF AIR</p>
+                <div class="offline-sub-group">
+                  <span class="offline-dot"></span>
+                  <p class="offline-sub">WAITING FOR SIGNAL</p>
+                </div>
+                <button id="retry-btn" class="retry-btn">↺ &nbsp;RETRY</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="scanlines" aria-hidden="true"></div>
+        </div>
+
+        <div class="stream-info">
+          <div class="stream-meta">
+            <h1 class="stream-title" id="stream-title">Live Stream</h1>
+          </div>
+          <div class="stream-stats">
+            <span id="viewer-quality" class="stat-badge hidden">AUTO</span>
+            <span class="stream-url-badge"><code id="stream-url-display"></code></span>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <span>SRS</span>
+        <span class="footer-sep">◆</span>
+        <span>WebRTC</span>
+        <span class="footer-sep">◆</span>
+        <span>WHEP</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

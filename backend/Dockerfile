@@ -30,20 +30,31 @@ COPY requirements.txt /app/requirements.txt
 RUN pip3 install --no-cache-dir -r /app/requirements.txt
 
 # ── Application code ──────────────────────────────────────────────────────────
-COPY server.py    /app/server.py
+COPY server.py     /app/server.py
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# ── Sandbox workspace (safe playground for learners) ──────────────────────────
-RUN mkdir -p /sandbox/projects /sandbox/documents /sandbox/scripts \
-    && echo "Hello, World!" > /sandbox/documents/welcome.txt \
-    && echo "This is a sandbox for learning Linux commands." > /sandbox/documents/readme.txt \
+# ── learner user — non-root, home = /sandbox ─────────────────────────────────
+# No password, no sudo. The interactive tmux shell runs as this user.
+RUN useradd --create-home --home-dir /sandbox --shell /bin/bash --no-user-group \
+        --gid 0 learner \
+    && mkdir -p /sandbox/projects /sandbox/documents /sandbox/scripts
+
+# ── Restricted bashrc for learner ────────────────────────────────────────────
+COPY learner.bashrc /sandbox/.bashrc
+# Login shells (su -l) read .bash_profile; make it simply source .bashrc
+RUN echo 'source ~/.bashrc' > /sandbox/.bash_profile
+
+# ── Sandbox practice files ────────────────────────────────────────────────────
+RUN printf 'Hello, World!\n' > /sandbox/documents/welcome.txt \
+    && printf 'This is a sandbox for learning Linux commands.\n' > /sandbox/documents/readme.txt \
     && printf '#!/bin/bash\necho "Hello from a script!"\n' > /sandbox/scripts/hello.sh \
     && chmod +x /sandbox/scripts/hello.sh \
     && printf '#!/bin/bash\nfor i in $(seq 1 5); do echo "Line $i"; done\n' > /sandbox/scripts/loop.sh \
     && chmod +x /sandbox/scripts/loop.sh \
-    && echo -e "apple\nbanana\ncherry\ndate\nelderberry" > /sandbox/documents/fruits.txt \
-    && echo -e "3,Alice,Engineering\n1,Bob,Marketing\n2,Carol,Engineering\n4,Dave,Sales" > /sandbox/documents/employees.csv
+    && printf 'apple\nbanana\ncherry\ndate\nelderberry\n' > /sandbox/documents/fruits.txt \
+    && printf '3,Alice,Engineering\n1,Bob,Marketing\n2,Carol,Engineering\n4,Dave,Sales\n' > /sandbox/documents/employees.csv \
+    && chown -R learner:root /sandbox
 
 WORKDIR /sandbox
 

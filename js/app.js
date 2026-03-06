@@ -1,22 +1,20 @@
 /**
  * Streaming frontend – app.js
- * Protocol : WebRTC via WHEP (WebRTC-HTTP Egress Protocol)
+ * Protocol : HTTP-FLV via flv.js
  * Server   : SRS (Simple Realtime Server)
  *
  * ── HOW IT WORKS ─────────────────────────────────────────────────────────────
- * 1. Browser creates an RTCPeerConnection and builds an SDP offer.
- * 2. The offer is POST-ed to SRS's WHEP HTTP endpoint.
- * 3. SRS replies with an SDP answer.
- * 4. ICE + DTLS handshake completes over UDP.
- * 5. Video/audio stream at <1 s latency, no plugins needed.
+ * 1. SRS receives RTMP from OBS and remuxes to HTTP-FLV on port 8080.
+ * 2. nginx proxies /live/*.flv → SRS with proxy_buffering off.
+ * 3. flv.js opens an HTTP chunked request and feeds the FLV tags into MSE.
+ * 4. ~1-2 s latency, works over any HTTP tunnel (ngrok, Cloudflare, etc.).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 const CONFIG = {
-  whepUrl: `http://${window.location.hostname}:1985/rtc/v1/whep/?app=live&stream=test`,
-  streamTitle: 'Live Stream',
+  flvUrl:        `${window.location.protocol}//${window.location.host}/live/test.flv`,
+  streamTitle:   'Live Stream',
   retryInterval: 3000,
-  iceTimeout: 2000,
 };
 
 // ── DOM refs ──────────────────────────────────────────────
@@ -52,14 +50,8 @@ const hudRec      = document.getElementById('hud-rec');
 
 // ── Init UI ───────────────────────────────────────────────
 streamTitleEl.textContent    = CONFIG.streamTitle;
-streamUrlDisplay.textContent = CONFIG.whepUrl;
+streamUrlDisplay.textContent = CONFIG.flvUrl;
 document.title               = CONFIG.streamTitle;
-
-// ── Low-latency video hints ───────────────────────────────
-video.preload = 'none';
-if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-  video.style.contentVisibility = 'auto';
-}
 
 // ── Clock ─────────────────────────────────────────────────
 function tickClock() {
@@ -74,12 +66,12 @@ tickClock();
 setInterval(tickClock, 1000);
 
 // ── State ─────────────────────────────────────────────────
-let pc              = null;
-let retryTimer      = null;
-let liveStartTime   = null;
-let statsInterval   = null;
-let timecodeInterval= null;
-let frameCount      = 0;
+let flvPlayer        = null;
+let retryTimer       = null;
+let liveStartTime    = null;
+let statsInterval    = null;
+let timecodeInterval = null;
+let frameCount       = 0;
 
 // ── UI helpers ────────────────────────────────────────────
 function showLoading() {
@@ -95,7 +87,7 @@ function showLoading() {
   footerStatus.classList.remove('is-live');
   footerStatus.querySelector('.footer-status-dot').style.background = '';
   document.getElementById('footer-status').innerHTML =
-    '<span class="footer-status-dot" style="background:var(--cyan);box-shadow:0 0 8px rgba(56,217,232,0.4)"></span> CONNECTING';
+    '<span class="footer-status-dot" style="background:var(--cyan);box-shadow:0 0 8px rgba(0,179,65,0.5)"></span> CONNECTING';
 }
 
 function showOffline() {
@@ -112,7 +104,6 @@ function showOffline() {
   document.getElementById('footer-status').innerHTML =
     '<span class="footer-status-dot"></span> SYSTEM READY';
 
-  // Reset telemetry
   teleUptime.textContent = '00:00:00';
   teleFrames.textContent = '0';
   teleCodec.textContent  = '—';
@@ -134,7 +125,7 @@ function showLive() {
   signalBars.classList.add('is-live');
   footerStatus.classList.add('is-live');
   document.getElementById('footer-status').innerHTML =
-    '<span class="footer-status-dot" style="background:#2ecc71;box-shadow:0 0 8px rgba(46,204,113,0.5)"></span> STREAM ACTIVE';
+    '<span class="footer-status-dot" style="background:#00ff41;box-shadow:0 0 10px rgba(0,255,65,0.6)"></span> STREAM ACTIVE';
 
   liveStartTime = Date.now();
   startTelemetry();
@@ -146,95 +137,84 @@ function scheduleRetry() {
   retryTimer = setTimeout(initPlayer, CONFIG.retryInterval);
 }
 
-function destroyPc() {
+function destroyPlayer() {
   clearTimeout(retryTimer);
   clearInterval(statsInterval);
   clearInterval(timecodeInterval);
   clearInterval(uptimeInterval);
-  if (pc) {
-    pc.close();
-    pc = null;
+  if (flvPlayer) {
+    flvPlayer.pause();
+    flvPlayer.unload();
+    flvPlayer.detachMediaElement();
+    flvPlayer.destroy();
+    flvPlayer = null;
   }
-  video.srcObject = null;
+  video.src = '';
 }
 
-// ── Telemetry (frames, codec, bitrate, signal) ───────────
+// ── Telemetry (bitrate, codec, buffer health, frames) ───
 function startTelemetry() {
   clearInterval(statsInterval);
+  let lastDecodedFrames = 0;
 
-  statsInterval = setInterval(async () => {
-    if (!pc) return;
-    try {
-      const stats = await pc.getStats();
-      stats.forEach((report) => {
-        if (report.type === 'inbound-rtp' && report.kind === 'video') {
-          if (report.framesDecoded !== undefined) {
-            frameCount = report.framesDecoded;
-            teleFrames.textContent = frameCount.toLocaleString();
-          }
-          if (report.codecId) {
-            stats.forEach((cr) => {
-              if (cr.id === report.codecId && cr.mimeType) {
-                teleCodec.textContent = cr.mimeType.replace('video/', '').toUpperCase();
-              }
-            });
-          }
-          if (report.bytesReceived !== undefined && report.timestamp) {
-            if (!showLive._lastBytes) {
-              showLive._lastBytes = report.bytesReceived;
-              showLive._lastTs    = report.timestamp;
-            } else {
-              const dBytes = report.bytesReceived - showLive._lastBytes;
-              const dTime  = (report.timestamp - showLive._lastTs) / 1000;
-              if (dTime > 0) {
-                const kbps = Math.round((dBytes * 8) / dTime / 1000);
-                hudBitrate.textContent = `${kbps} kbps`;
-              }
-              showLive._lastBytes = report.bytesReceived;
-              showLive._lastTs    = report.timestamp;
-            }
-          }
-          if (report.frameWidth && report.frameHeight) {
-            hudRes.textContent = `${report.frameWidth}×${report.frameHeight}`;
-          }
-          if (report.packetsReceived !== undefined && report.packetsLost !== undefined) {
-            const total = report.packetsReceived + report.packetsLost;
-            const lossRate = total > 0 ? report.packetsLost / total : 0;
-            if (lossRate < 0.01) {
-              signalInd.className = 'signal-indicator strong';
-              signalText.textContent = 'EXCELLENT';
-            } else if (lossRate < 0.05) {
-              signalInd.className = 'signal-indicator medium';
-              signalText.textContent = 'GOOD';
-            } else {
-              signalInd.className = 'signal-indicator weak';
-              signalText.textContent = 'POOR';
-            }
-          }
-        }
-      });
-    } catch (e) { /* stats not available yet */ }
+  statsInterval = setInterval(() => {
+    if (!flvPlayer) return;
+
+    // Bitrate from flv.js statistics
+    const speed = flvPlayer.statisticsInfo?.speed ?? 0; // KB/s
+    if (speed > 0) {
+      hudBitrate.textContent = `${Math.round(speed * 8)} kbps`;
+    }
+
+    // Codec from mediaInfo (available after first segment)
+    const codec = flvPlayer.mediaInfo?.videoCodec;
+    if (codec) teleCodec.textContent = codec.split('.')[0].toUpperCase();
+
+    // Resolution
+    const w = flvPlayer.mediaInfo?.width;
+    const h = flvPlayer.mediaInfo?.height;
+    if (w && h) hudRes.textContent = `${w}×${h}`;
+
+    // Frame count via decoded frames
+    const decoded = video.webkitDecodedFrameCount ?? 0;
+    frameCount += (decoded - lastDecodedFrames);
+    lastDecodedFrames = decoded;
+    if (decoded > 0) teleFrames.textContent = decoded.toLocaleString();
+
+    // Buffer health → signal quality
+    if (video.buffered.length > 0) {
+      const bufAhead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+      if (bufAhead > 2) {
+        signalInd.className = 'signal-indicator strong';
+        signalText.textContent = 'EXCELLENT';
+      } else if (bufAhead > 0.5) {
+        signalInd.className = 'signal-indicator medium';
+        signalText.textContent = 'GOOD';
+      } else {
+        signalInd.className = 'signal-indicator weak';
+        signalText.textContent = 'POOR';
+      }
+    }
   }, 2000);
 }
 
-// ── Timecode (HUD) ─────────────────────────────────────────
+// ── Timecode (HUD) ────────────────────────────────────────
 function startTimecode() {
   clearInterval(timecodeInterval);
   const start = Date.now();
-  let frame = 0;
 
   timecodeInterval = setInterval(() => {
-    const elapsed = Date.now() - start;
-    const totalSec = Math.floor(elapsed / 1000);
+    const elapsed   = Date.now() - start;
+    const totalSec  = Math.floor(elapsed / 1000);
     const h  = String(Math.floor(totalSec / 3600)).padStart(2, '0');
     const m  = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
     const s  = String(totalSec % 60).padStart(2, '0');
     const f  = String(Math.floor((elapsed % 1000) / (1000 / 30))).padStart(2, '0');
     hudTimecode.textContent = `${h}:${m}:${s}:${f}`;
-  }, 1000 / 30); // ~30fps timecode
+  }, 1000 / 30);
 }
 
-// ── Uptime ticker (separate so we can clear reliably) ────
+// ── Uptime ticker ─────────────────────────────────────────
 let uptimeInterval = null;
 
 function startUptimeTicker() {
@@ -249,119 +229,60 @@ function startUptimeTicker() {
   }, 1000);
 }
 
-// ── SRS play via /rtc/v1/play/ ────────────────────────────
-function waitForIce(peerConnection) {
-  return new Promise((resolve) => {
-    if (peerConnection.iceGatheringState === 'complete') {
-      resolve();
-      return;
-    }
-    const timer = setTimeout(resolve, CONFIG.iceTimeout);
-    peerConnection.addEventListener('icegatheringstatechange', function handler() {
-      if (peerConnection.iceGatheringState === 'complete') {
-        clearTimeout(timer);
-        peerConnection.removeEventListener('icegatheringstatechange', handler);
-        resolve();
-      }
-    });
-  });
-}
-
-function buildPlayUrl(whepUrl) {
-  const u = new URL(whepUrl);
-  const app    = u.searchParams.get('app')    || 'live';
-  const stream = u.searchParams.get('stream') || 'livestream';
-  const playApi = `${u.protocol}//${u.host}/rtc/v1/play/`;
-  const streamUrl = `webrtc://${u.hostname}/${app}/${stream}`;
-  return { playApi, streamUrl };
-}
-
-async function initPlayer() {
-  destroyPc();
+// ── HTTP-FLV player ───────────────────────────────────────
+function initPlayer() {
+  destroyPlayer();
   showLoading();
 
-  try {
-    pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      bundlePolicy: 'max-bundle',
-    });
+  if (!mpegts.isSupported()) {
+    console.error('[FLV] flv.js not supported in this browser');
+    showOffline();
+    return;
+  }
 
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    pc.addTransceiver('audio', { direction: 'recvonly' });
-
-    pc.ontrack = ({ streams }) => {
-      if (streams[0] && video.srcObject !== streams[0]) {
-        video.srcObject = streams[0];
-        video.play().catch((e) => console.warn('[WebRTC] autoplay blocked:', e));
-      }
-    };
-
-    const thisPc = pc;
-    pc.onconnectionstatechange = () => {
-      if (pc !== thisPc) return;
-      console.log('[WebRTC] state →', pc.connectionState);
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        showOffline();
-        scheduleRetry();
-      }
-    };
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await waitForIce(pc);
-
-    const { playApi, streamUrl } = buildPlayUrl(CONFIG.whepUrl);
-    console.log('[WebRTC] POST', playApi, '→', streamUrl);
-
-    const resp = await fetch(playApi, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sdp:       pc.localDescription.sdp,
-        streamurl: streamUrl,
-        clientip:  null,
-      }),
-    });
-
-    const json = await resp.json().catch(() => ({}));
-    console.log('[WebRTC] SRS response:', json);
-
-    if (!resp.ok || json.code !== 0) {
-      throw new Error(`SRS error ${json.code}: ${json.error || resp.statusText}`);
+  flvPlayer = mpegts.createPlayer(
+    { type: 'flv', url: CONFIG.flvUrl, isLive: true },
+    {
+      enableWorker:        true,
+      lazyLoad:            false,
+      lazyLoadMaxDuration: 3,
+      // Keep the live edge: drop stale buffered data
+      stashInitialSize:    128,
+      // Reconnect on network errors
+      enableStashBuffer:   false,
     }
+  );
 
-    // On Windows, Docker Desktop can't route the host's own LAN IP back through
-    // its NAT — so WebRTC ICE fails when opening the page from localhost.
-    // Fix: replace the candidate IP in the SDP answer with 127.0.0.1.
-    let answerSdp = json.sdp;
-    const h = window.location.hostname;
-    if (h === 'localhost' || h === '127.0.0.1') {
-      answerSdp = answerSdp.replace(
-        /^(a=candidate:\S+ \S+ \S+ \S+ )(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(\s)/gm,
-        '$1127.0.0.1$3'
-      );
-      console.log('[WebRTC] patched SDP candidate → 127.0.0.1 (localhost workaround)');
-    }
+  flvPlayer.attachMediaElement(video);
+  flvPlayer.load();
+  video.play().catch(() => {});
 
-    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-
-  } catch (err) {
-    console.error('[WebRTC]', err);
+  flvPlayer.on(mpegts.Events.ERROR, (errType, errDetail) => {
+    console.error('[FLV] error', errType, errDetail);
     showOffline();
     scheduleRetry();
-  }
+  });
+
+  flvPlayer.on(mpegts.Events.STATISTICS_INFO, () => {});
 }
 
-// ── Video events ──────────────────────────────────────────
+// ── Video element events ──────────────────────────────────
 video.addEventListener('playing', () => {
   showLive();
   startUptimeTicker();
-  viewerQuality.textContent = 'WEBRTC';
-
-  // Reset HUD stat caches
-  showLive._lastBytes = null;
-  showLive._lastTs    = null;
+  viewerQuality.textContent = 'HTTP-FLV';
 });
+
+video.addEventListener('waiting', () => {
+  // Brief stall — don't go offline immediately, just show connecting
+  connectingBadge.classList.remove('hidden');
+  liveBadge.classList.add('hidden');
+});
+
+video.addEventListener('playing', () => {
+  connectingBadge.classList.add('hidden');
+  liveBadge.classList.remove('hidden');
+}, true);
 
 // ── Retry button ──────────────────────────────────────────
 retryBtn.addEventListener('click', initPlayer);
@@ -391,8 +312,63 @@ const cmdRateBadge   = document.getElementById('cmd-rate');
 const cmdWlToggle    = document.getElementById('cmd-whitelist-toggle');
 const cmdWlContainer = document.getElementById('cmd-whitelist');
 
+// Username
+const usernameModal   = document.getElementById('username-modal');
+const usernameInput   = document.getElementById('username-input');
+const usernameSubmit  = document.getElementById('username-submit');
+const usernameDisplay = document.getElementById('username-display');
+const usernameRename  = document.getElementById('username-rename');
+
+// User list
+const cmdUsersList  = document.getElementById('cmd-users-list');
+const cmdUsersCount = document.getElementById('cmd-users-count');
+
 let cmdCooldownTimer = null;
 let cmdOnCooldown    = false;
+
+// ── Username management ──────────────────────────────────
+const USERNAME_KEY = 'stream_username';
+
+function getUsername() {
+  return localStorage.getItem(USERNAME_KEY) || '';
+}
+
+function saveUsername(name) {
+  localStorage.setItem(USERNAME_KEY, name);
+  usernameDisplay.textContent = name;
+}
+
+function openUsernameModal() {
+  usernameInput.value = getUsername();
+  usernameModal.classList.remove('hidden');
+  setTimeout(() => usernameInput.focus(), 50);
+}
+
+function closeUsernameModal() {
+  usernameModal.classList.add('hidden');
+}
+
+function submitUsername() {
+  const raw     = usernameInput.value.trim();
+  const cleaned = raw.replace(/[^a-zA-Z0-9_\-]/g, '').slice(0, 20);
+  if (!cleaned) return;
+  saveUsername(cleaned);
+  closeUsernameModal();
+}
+
+usernameSubmit.addEventListener('click', submitUsername);
+usernameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitUsername();
+  if (e.key === 'Escape' && getUsername()) closeUsernameModal();
+});
+usernameRename.addEventListener('click', openUsernameModal);
+
+// Show modal on first visit; otherwise just update display
+if (!getUsername()) {
+  openUsernameModal();
+} else {
+  usernameDisplay.textContent = getUsername();
+}
 
 // ── Send command ──────────────────────────────────────────
 async function sendCommand() {
@@ -434,6 +410,7 @@ async function sendCommand() {
 function startCooldown() {
   cmdOnCooldown = true;
   cmdRateBadge.textContent = 'COOLDOWN';
+  cmdRateBadge.classList.remove('queued');
   cmdRateBadge.classList.add('cooldown');
   cmdCooldownBar.style.transition = 'none';
   cmdCooldownBar.style.width = '100%';
@@ -447,6 +424,7 @@ function startCooldown() {
   cmdCooldownTimer = setTimeout(() => {
     cmdOnCooldown = false;
     cmdSendBtn.disabled = false;
+    cmdInterruptBtn.disabled = false;
     cmdInput.disabled   = false;
     cmdRateBadge.textContent = 'READY';
     cmdRateBadge.classList.remove('cooldown');
@@ -466,7 +444,7 @@ function showCmdFeedback(msg, type) {
 }
 
 // ── History list ──────────────────────────────────────────
-function addHistoryEntry(cmd) {
+function addHistoryEntry(cmd, username) {
   // Remove the "empty" placeholder
   const empty = cmdHistory.querySelector('.cmd-history-empty');
   if (empty) empty.remove();
@@ -481,8 +459,13 @@ function addHistoryEntry(cmd) {
     String(now.getSeconds()).padStart(2, '0'),
   ].join(':');
 
+  const userTag = username
+    ? `<span class="cmd-entry-user">${escapeHtml(username)}</span>`
+    : '';
+
   entry.innerHTML = `
     <div class="cmd-entry-left">
+      ${userTag}
       <span class="cmd-entry-prompt">❯</span>
       <span class="cmd-entry-text">${escapeHtml(cmd)}</span>
     </div>
@@ -533,6 +516,41 @@ cmdWlToggle.addEventListener('click', () => {
   }
 });
 
+// ── Send interrupt (Ctrl+C) ─────────────────────────────
+const cmdInterruptBtn = document.getElementById('cmd-interrupt');
+
+async function sendInterrupt() {
+  if (cmdOnCooldown) return;
+  const username = getUsername();
+  if (!username) { openUsernameModal(); return; }
+
+  cmdInterruptBtn.disabled = true;
+
+  try {
+    const resp = await fetch(`${CMD_CONFIG.apiBase}/api/interrupt`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ username }),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+
+    if (resp.ok && data.ok) {
+      showCmdFeedback('✓ Sent ^C (interrupt)', 'success');
+      addHistoryEntry('^C', username);
+      startCooldown();
+    } else {
+      showCmdFeedback(`✗ ${data.error || 'Unknown error'}`, 'error');
+      cmdInterruptBtn.disabled = false;
+    }
+  } catch (err) {
+    showCmdFeedback('✗ Backend unreachable — is the sandbox container running?', 'error');
+    cmdInterruptBtn.disabled = false;
+  }
+}
+
+cmdInterruptBtn.addEventListener('click', sendInterrupt);
+
 // ── Event listeners ───────────────────────────────────────
 cmdSendBtn.addEventListener('click', sendCommand);
 
@@ -550,4 +568,46 @@ cmdWlContainer.addEventListener('click', (e) => {
     cmdInput.focus();
   }
 });
+
+// ── Online user list ───────────────────────────────────────
+async function refreshUserList() {
+  try {
+    const resp = await fetch(`${CMD_CONFIG.apiBase}/api/users`);
+    const data = await resp.json();
+    const me   = getUsername();
+
+    cmdUsersCount.textContent = data.count || 0;
+
+    if (!data.users || data.users.length === 0) {
+      cmdUsersList.innerHTML = '<span class="cmd-users-empty">No active users</span>';
+      return;
+    }
+
+    cmdUsersList.innerHTML = data.users
+      .map((u) => {
+        const isSelf = u === me;
+        return `<span class="cmd-user-chip${isSelf ? ' is-self' : ''}">${escapeHtml(u)}${isSelf ? ' <em>(you)</em>' : ''}</span>`;
+      })
+      .join('');
+  } catch {
+    // silently ignore — network may not be ready yet
+  }
+}
+
+refreshUserList();
+setInterval(refreshUserList, 15_000);
+
+// ── Heartbeat ──────────────────────────────────────────────
+function sendHeartbeat() {
+  const username = getUsername();
+  if (!username) return;
+  fetch(`${CMD_CONFIG.apiBase}/api/heartbeat`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ username }),
+  }).catch(() => {});
+}
+
+sendHeartbeat();
+setInterval(sendHeartbeat, 30_000);
 

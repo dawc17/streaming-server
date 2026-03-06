@@ -3,17 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Stream</title>
+  <title>[ROOT@STREAM ~]$</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=Source+Code+Pro:wght@300;400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <!-- mpegts.js: HTTP-FLV player library (successor to flv.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js/dist/mpegts.min.js"></script>
 </head>
 <body>
   <!-- Atmospheric layers -->
   <div class="noise-overlay" aria-hidden="true"></div>
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="vignette-overlay" aria-hidden="true"></div>
+
+  <!-- ═══ USERNAME MODAL ═══ -->
+  <div id="username-modal" class="username-modal hidden">
+    <div class="username-modal-box">
+      <div class="username-modal-title">CHOOSE YOUR CALLSIGN</div>
+      <div class="username-modal-sub">Visible to other viewers in the command history</div>
+      <div class="username-modal-input-row">
+        <span class="username-modal-prompt">&gt;</span>
+        <input
+          type="text"
+          id="username-input"
+          class="username-modal-input"
+          placeholder="your_name"
+          maxlength="20"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div class="username-modal-hint">Letters, numbers, _ and - only &middot; max 20 chars</div>
+      <button id="username-submit" class="username-modal-btn">CONFIRM ⏎</button>
+    </div>
+  </div>
 
   <div class="page-wrapper">
 
@@ -169,10 +193,10 @@
         <!-- ═══ STREAM INFO BAR ═══ -->
         <div class="stream-info">
           <div class="stream-meta">
-            <h1 class="stream-title" id="stream-title">Live Stream</h1>
+            <h1 class="stream-title" id="stream-title">Interaktiv Linux Terminal</h1>
             <div class="stream-tags">
-              <span class="tag tag-accent" id="viewer-quality">WEBRTC</span>
-              <span class="tag tag-dim">SUB-SECOND LATENCY</span>
+              <span class="tag tag-accent" id="viewer-quality">HTTP-FLV</span>
+              <span class="tag tag-dim">˜1-2 S LATENCY</span>
             </div>
           </div>
           <div class="stream-endpoint">
@@ -198,6 +222,12 @@
           </div>
         </div>
 
+        <div class="cmd-user-row">
+          <span class="cmd-user-label">YOU</span>
+          <span class="cmd-user-name" id="username-display">—</span>
+          <button class="cmd-rename-btn" id="username-rename" title="Change callsign">✎ RENAME</button>
+        </div>
+
         <div class="cmd-input-row">
           <span class="cmd-prompt">$</span>
           <input
@@ -215,6 +245,13 @@
           </button>
         </div>
 
+        <div class="cmd-action-row">
+          <button id="cmd-interrupt" class="cmd-interrupt-btn" title="Send Ctrl+C (interrupt running process)">
+            <span>^C</span>
+            <span class="cmd-interrupt-label">INTERRUPT</span>
+          </button>
+        </div>
+
         <div class="cmd-cooldown-bar" id="cmd-cooldown-bar"></div>
 
         <div class="cmd-feedback" id="cmd-feedback"></div>
@@ -228,6 +265,16 @@
             ALLOWED COMMANDS ▾
           </button>
           <div class="cmd-whitelist" id="cmd-whitelist"></div>
+        </div>
+
+        <div class="cmd-users-section">
+          <div class="cmd-users-header">
+            <span class="cmd-users-label">ONLINE</span>
+            <span class="cmd-users-count" id="cmd-users-count">0</span>
+          </div>
+          <div class="cmd-users-list" id="cmd-users-list">
+            <span class="cmd-users-empty">No active users</span>
+          </div>
         </div>
 
       </div>

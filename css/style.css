@@ -2071,3 +2071,292 @@ body {
     padding: 7px 12px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   VOD LIBRARY
+   ═══════════════════════════════════════════════════════════════ */
+
+.vod-section {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+}
+
+/* ── Header bar ── */
+.vod-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding: 1.2rem 0 1rem;
+  margin-bottom: 1rem;
+}
+
+.vod-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.vod-icon {
+  color: var(--amber);
+  font-size: 0.75rem;
+}
+
+.vod-title {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+
+.vod-count {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.vod-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.vod-storage {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.vod-refresh-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: color 0.2s, border-color 0.2s;
+  line-height: 1;
+}
+.vod-refresh-btn:hover {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+.vod-refresh-btn.spinning {
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty state ── */
+.vod-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 2rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+.vod-empty-icon {
+  font-size: 1.1rem;
+  opacity: 0.4;
+}
+
+/* ── Grid ── */
+.vod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.8rem;
+}
+
+/* ── Card ── */
+.vod-card {
+  position: relative;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.9rem 0.9rem 0.9rem 2.6rem;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+}
+.vod-card:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0, 255, 200, 0.08);
+}
+.vod-card:hover .vod-card-play {
+  color: var(--cyan);
+}
+
+.vod-card-play {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  transition: color 0.2s;
+}
+
+.vod-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.vod-card-stream {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vod-card-date {
+  font-size: 0.68rem;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+}
+
+.vod-card-file {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.vod-card-size {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.vod-card-delete {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.vod-card:hover .vod-card-delete {
+  opacity: 1;
+}
+.vod-card-delete:hover {
+  color: #ff4444;
+}
+
+/* ── Modal ── */
+.vod-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vod-modal.hidden {
+  display: none;
+}
+
+.vod-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(3px);
+}
+
+.vod-modal-box {
+  position: relative;
+  z-index: 1;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: min(900px, 95vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+.vod-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.vod-modal-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.vod-modal-close {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color 0.2s, border-color 0.2s;
+}
+.vod-modal-close:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.vod-modal-player {
+  flex: 1;
+  background: #000;
+  min-height: 0;
+}
+.vod-modal-player video {
+  width: 100%;
+  height: 100%;
+  max-height: 70vh;
+  display: block;
+}
+
+.vod-modal-meta {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.vod-meta-item {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.vod-meta-label {
+  color: var(--amber);
+  font-size: 0.6rem;
+}
+
+body.vod-modal-open {
+  overflow: hidden;
+}

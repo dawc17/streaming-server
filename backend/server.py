@@ -10,6 +10,9 @@ from flask_cors import CORS
 import subprocess
 import re
 import time
+import os
+import glob
+from datetime import datetime
 import threading
 from collections import deque
 
@@ -330,14 +333,91 @@ def get_whitelist():
     return jsonify({"commands": sorted(ALLOWED_COMMANDS)})
 
 
-@app.route("/api/health", methods=["GET"])
-def health():
-    """Health check."""
-    with _queue_lock:
-        queue_depth = len(_queue)
-    online = sum(1 for d in active_users.values() if time.time() - d["last_seen"] < USER_TIMEOUT)
-    return jsonify({"status": "ok", "tmux_session": TMUX_SESSION,
-                    "queue_depth": queue_depth, "users_online": online})
+# ── VOD Endpoints ──────────────────────────────────────────
+
+VOD_DIR = "/vods"
+
+
+def _vod_metadata(filepath):
+    """Return a metadata dict for a single FLV recording, or None on error."""
+    try:
+        st       = os.stat(filepath)
+        rel_path = os.path.relpath(filepath, VOD_DIR).replace("\\", "/")
+        # path structure: <app>/<stream>/<yyyy>/<mm>/<dd>/<timestamp>.flv
+        parts    = rel_path.split("/")
+        stream   = parts[1] if len(parts) >= 2 else "unknown"
+        date_str = "/".join(parts[2:5]) if len(parts) >= 5 else ""
+        return {
+            "filename": os.path.basename(filepath),
+            "url_path": rel_path,           # used by the frontend to build /vods/<rel_path>
+            "stream":   stream,
+            "date":     date_str,
+            "size":     st.st_size,
+            "recorded": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            "recorded_ts": st.st_mtime,
+        }
+    except Exception:
+        return None
+
+
+@app.route("/api/vods", methods=["GET"])
+def list_vods():
+    """List all recorded VOD segments, newest first."""
+    if not os.path.isdir(VOD_DIR):
+        return jsonify({"vods": [], "count": 0, "total_size": 0})
+
+    vods = []
+    for fp in glob.glob(os.path.join(VOD_DIR, "**", "*.flv"), recursive=True):
+        meta = _vod_metadata(fp)
+        if meta:
+            vods.append(meta)
+
+    vods.sort(key=lambda x: x["recorded_ts"], reverse=True)
+    total_size = sum(v["size"] for v in vods)
+
+    # Remove internal sort key from response
+    for v in vods:
+        del v["recorded_ts"]
+
+    return jsonify({"vods": vods, "count": len(vods), "total_size": total_size})
+
+
+@app.route("/api/vods/stats", methods=["GET"])
+def vod_stats():
+    """Storage summary for the VOD library."""
+    if not os.path.isdir(VOD_DIR):
+        return jsonify({"total_files": 0, "total_size": 0, "size_mb": 0.0})
+
+    total_files = 0
+    total_size  = 0
+    for fp in glob.glob(os.path.join(VOD_DIR, "**", "*.flv"), recursive=True):
+        try:
+            total_size += os.path.getsize(fp)
+            total_files += 1
+        except OSError:
+            pass
+
+    return jsonify({
+        "total_files": total_files,
+        "total_size":  total_size,
+        "size_mb":     round(total_size / (1024 * 1024), 1),
+    })
+
+
+@app.route("/api/vods/<path:vod_path>", methods=["DELETE"])
+def delete_vod(vod_path):
+    """Delete a VOD file by its relative path."""
+    full_path = os.path.normpath(os.path.join(VOD_DIR, vod_path))
+    # Guard against path traversal
+    if not full_path.startswith(os.path.normpath(VOD_DIR) + os.sep):
+        return jsonify({"ok": False, "error": "Invalid path"}), 400
+    if not os.path.isfile(full_path):
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    try:
+        os.remove(full_path)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 # ── Entry point ────────────────────────────────────────────

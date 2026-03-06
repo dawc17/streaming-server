@@ -7,9 +7,11 @@ services:
       - "1985:1985" # HTTP API + WHEP endpoint
       - "8000:8000/udp" # WebRTC media (UDP)
       # 8080 is intentionally NOT exposed here — nginx takes over below
+    command: ./objs/srs -c conf/srs.conf
     volumes:
       - ./srs.conf:/usr/local/srs/conf/srs.conf
       - .:/usr/local/srs/objs/nginx/html/stream
+      - vods:/usr/local/srs/objs/nginx/html/vods # VOD recordings storage
     environment:
       - CANDIDATE=10.136.64.45
 
@@ -24,6 +26,7 @@ services:
     volumes:
       - ./nginx-frontend.conf:/etc/nginx/conf.d/default.conf:ro
       - .:/var/www/html:ro
+      - vods:/var/www/vods:ro # Serve VOD recordings
     depends_on:
       - sandbox
 
@@ -37,9 +40,14 @@ services:
     # To test directly from localhost: docker exec or add 3000:3000 temporarily.
     expose:
       - "3000"
+    volumes:
+      - vods:/vods:ro # Read VOD metadata (read-only for safety)
     # Limit resources so viewers can't abuse the box
     deploy:
       resources:
         limits:
           cpus: "1.0"
           memory: 512M
+
+volumes:
+  vods: # Persistent storage for VOD recordings

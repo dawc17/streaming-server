@@ -282,6 +282,44 @@
 
     </div><!-- /.stream-layout -->
 
+    <!-- ═══ VOD LIBRARY ═══ -->
+    <section class="vod-section" id="vod-section">
+      <div class="vod-header">
+        <div class="vod-title-group">
+          <span class="vod-icon">▶</span>
+          <span class="vod-title">RECORDINGS</span>
+          <span class="vod-count" id="vod-count">—</span>
+        </div>
+        <div class="vod-header-right">
+          <span class="vod-storage" id="vod-storage"></span>
+          <button class="vod-refresh-btn" id="vod-refresh" title="Refresh list">⟳</button>
+        </div>
+      </div>
+
+      <!-- VOD player modal -->
+      <div class="vod-modal hidden" id="vod-modal">
+        <div class="vod-modal-backdrop" id="vod-modal-backdrop"></div>
+        <div class="vod-modal-box">
+          <div class="vod-modal-header">
+            <span class="vod-modal-title" id="vod-modal-title">—</span>
+            <button class="vod-modal-close" id="vod-modal-close">✕ CLOSE</button>
+          </div>
+          <div class="vod-modal-player">
+            <video id="vod-video" controls autoplay playsinline></video>
+          </div>
+          <div class="vod-modal-meta" id="vod-modal-meta"></div>
+        </div>
+      </div>
+
+      <!-- VOD grid -->
+      <div class="vod-grid" id="vod-grid">
+        <div class="vod-empty" id="vod-empty">
+          <span class="vod-empty-icon">○</span>
+          <span>No recordings yet — recordings appear here when a stream ends</span>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ FOOTER ═══ -->
     <footer class="site-footer">
       <div class="footer-inner">

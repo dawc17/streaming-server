@@ -611,3 +611,165 @@ function sendHeartbeat() {
 sendHeartbeat();
 setInterval(sendHeartbeat, 30_000);
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOD LIBRARY
+// Fetches recorded segments from /api/vods and renders a browsable grid.
+// Clicking a card opens a modal with an FLV player (mpegts.js).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const vodGrid        = document.getElementById('vod-grid');
+const vodEmpty       = document.getElementById('vod-empty');
+const vodCount       = document.getElementById('vod-count');
+const vodStorage     = document.getElementById('vod-storage');
+const vodRefreshBtn  = document.getElementById('vod-refresh');
+const vodModal       = document.getElementById('vod-modal');
+const vodModalTitle  = document.getElementById('vod-modal-title');
+const vodModalMeta   = document.getElementById('vod-modal-meta');
+const vodModalClose  = document.getElementById('vod-modal-close');
+const vodModalBack   = document.getElementById('vod-modal-backdrop');
+const vodVideoEl     = document.getElementById('vod-video');
+
+let vodFlvPlayer = null;
+
+// ── Helpers ───────────────────────────────────────────────
+function fmtSize(bytes) {
+  if (bytes < 1024)        return `${bytes} B`;
+  if (bytes < 1024 ** 2)   return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3)   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function fmtDate(str) {
+  // str: "2026-03-06 14:32:00"
+  const d = new Date(str.replace(' ', 'T'));
+  return isNaN(d) ? str : d.toLocaleString();
+}
+
+// ── Destroy any running VOD player ───────────────────────
+function destroyVodPlayer() {
+  if (vodFlvPlayer) {
+    vodFlvPlayer.pause();
+    vodFlvPlayer.unload();
+    vodFlvPlayer.detachMediaElement();
+    vodFlvPlayer.destroy();
+    vodFlvPlayer = null;
+  }
+  vodVideoEl.src = '';
+}
+
+// ── Open modal and play a VOD ─────────────────────────────
+function openVod(vod) {
+  destroyVodPlayer();
+
+  const url = `${window.location.origin}/vods/${vod.url_path}`;
+  vodModalTitle.textContent = `${vod.stream}  ·  ${vod.recorded}`;
+  vodModalMeta.innerHTML = `
+    <span class="vod-meta-item"><span class="vod-meta-label">FILE</span>${vod.filename}</span>
+    <span class="vod-meta-item"><span class="vod-meta-label">SIZE</span>${fmtSize(vod.size)}</span>
+    <span class="vod-meta-item"><span class="vod-meta-label">DATE</span>${vod.date}</span>
+  `;
+
+  vodModal.classList.remove('hidden');
+  document.body.classList.add('vod-modal-open');
+
+  if (mpegts.isSupported()) {
+    vodFlvPlayer = mpegts.createPlayer(
+      { type: 'flv', url, isLive: false },
+      { enableWorker: true, lazyLoad: true }
+    );
+    vodFlvPlayer.attachMediaElement(vodVideoEl);
+    vodFlvPlayer.load();
+    vodVideoEl.play().catch(() => {});
+  } else {
+    // Fallback: let the browser try native
+    vodVideoEl.src = url;
+    vodVideoEl.play().catch(() => {});
+  }
+}
+
+// ── Close modal ───────────────────────────────────────────
+function closeVodModal() {
+  destroyVodPlayer();
+  vodModal.classList.add('hidden');
+  document.body.classList.remove('vod-modal-open');
+}
+
+vodModalClose.addEventListener('click', closeVodModal);
+vodModalBack.addEventListener('click', closeVodModal);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !vodModal.classList.contains('hidden')) closeVodModal();
+});
+
+// ── Render grid ───────────────────────────────────────────
+function renderVods(vods, totalSize) {
+  // Remove all cards (but keep the empty placeholder)
+  Array.from(vodGrid.querySelectorAll('.vod-card')).forEach(el => el.remove());
+
+  vodCount.textContent  = vods.length ? `(${vods.length})` : '';
+  vodStorage.textContent = vods.length ? fmtSize(totalSize) : '';
+
+  if (vods.length === 0) {
+    vodEmpty.classList.remove('hidden');
+    return;
+  }
+  vodEmpty.classList.add('hidden');
+
+  vods.forEach((vod) => {
+    const card = document.createElement('div');
+    card.className = 'vod-card';
+    card.innerHTML = `
+      <div class="vod-card-play">▶</div>
+      <div class="vod-card-body">
+        <div class="vod-card-stream">${escapeHtml(vod.stream)}</div>
+        <div class="vod-card-date">${escapeHtml(vod.recorded)}</div>
+        <div class="vod-card-file">${escapeHtml(vod.filename)}</div>
+        <div class="vod-card-size">${fmtSize(vod.size)}</div>
+      </div>
+      <button class="vod-card-delete" title="Delete recording" data-path="${escapeHtml(vod.url_path)}">✕</button>
+    `;
+
+    // Play on card click (except delete button)
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.vod-card-delete')) return;
+      openVod(vod);
+    });
+
+    // Delete button
+    card.querySelector('.vod-card-delete').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete ${vod.filename}?`)) return;
+      try {
+        const r = await fetch(`/api/vods/${vod.url_path}`, { method: 'DELETE' });
+        const d = await r.json();
+        if (d.ok) loadVods();
+        else alert(`Delete failed: ${d.error}`);
+      } catch {
+        alert('Delete failed — backend unreachable');
+      }
+    });
+
+    vodGrid.appendChild(card);
+  });
+}
+
+// ── Fetch and display VOD list ────────────────────────────
+async function loadVods() {
+  vodRefreshBtn.classList.add('spinning');
+  try {
+    const resp = await fetch('/api/vods');
+    const data = await resp.json();
+    renderVods(data.vods || [], data.total_size || 0);
+  } catch {
+    vodEmpty.textContent = '⚠ Could not load recordings';
+    vodEmpty.classList.remove('hidden');
+  } finally {
+    vodRefreshBtn.classList.remove('spinning');
+  }
+}
+
+vodRefreshBtn.addEventListener('click', loadVods);
+
+// Initial load + refresh every 60 s
+loadVods();
+setInterval(loadVods, 60_000);
+

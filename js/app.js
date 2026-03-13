@@ -669,8 +669,8 @@ function openVod(vod) {
     <span class="vod-meta-item"><span class="vod-meta-label">DATE</span>${vod.date}</span>
   `;
 
+  document.body.style.overflow = 'hidden';
   vodModal.classList.remove('hidden');
-  document.body.classList.add('vod-modal-open');
 
   if (mpegts.isSupported()) {
     vodFlvPlayer = mpegts.createPlayer(
@@ -691,7 +691,7 @@ function openVod(vod) {
 function closeVodModal() {
   destroyVodPlayer();
   vodModal.classList.add('hidden');
-  document.body.classList.remove('vod-modal-open');
+  document.body.style.overflow = '';
 }
 
 vodModalClose.addEventListener('click', closeVodModal);

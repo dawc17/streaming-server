@@ -296,21 +296,6 @@
         </div>
       </div>
 
-      <!-- VOD player modal -->
-      <div class="vod-modal hidden" id="vod-modal">
-        <div class="vod-modal-backdrop" id="vod-modal-backdrop"></div>
-        <div class="vod-modal-box">
-          <div class="vod-modal-header">
-            <span class="vod-modal-title" id="vod-modal-title">—</span>
-            <button class="vod-modal-close" id="vod-modal-close">✕ CLOSE</button>
-          </div>
-          <div class="vod-modal-player">
-            <video id="vod-video" controls autoplay playsinline></video>
-          </div>
-          <div class="vod-modal-meta" id="vod-modal-meta"></div>
-        </div>
-      </div>
-
       <!-- VOD grid -->
       <div class="vod-grid" id="vod-grid">
         <div class="vod-empty" id="vod-empty">
@@ -341,6 +326,21 @@
         <div class="footer-line-glow"></div>
       </div>
     </footer>
+  </div>
+
+  <!-- VOD player modal (must be direct child of body for position:fixed centering) -->
+  <div class="vod-modal hidden" id="vod-modal">
+    <div class="vod-modal-backdrop" id="vod-modal-backdrop"></div>
+    <div class="vod-modal-box">
+      <div class="vod-modal-header">
+        <span class="vod-modal-title" id="vod-modal-title">—</span>
+        <button class="vod-modal-close" id="vod-modal-close">✕ CLOSE</button>
+      </div>
+      <div class="vod-modal-player">
+        <video id="vod-video" controls autoplay playsinline></video>
+      </div>
+      <div class="vod-modal-meta" id="vod-modal-meta"></div>
+    </div>
   </div>
 
   <script src="js/app.js"></script>

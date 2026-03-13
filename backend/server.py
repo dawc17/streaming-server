@@ -58,6 +58,8 @@ ALLOWED_COMMANDS = {
     "clear", "history", "man", "help", "alias", "env", "export",
     "printenv", "set", "type", "true", "false", "yes", "seq",
     "sleep", "watch", "tput", "reset",
+    # Tutorial
+    "tutorial",
 }
 
 # ── Blocked patterns (even if base command is allowed) ─────
@@ -331,6 +333,37 @@ def get_history():
 def get_whitelist():
     """Return the list of allowed commands."""
     return jsonify({"commands": sorted(ALLOWED_COMMANDS)})
+
+
+# ── Tutorial Endpoint ──────────────────────────────────────
+
+_TUTORIAL_LEVELS = {
+    1:  {"title": "Where am I?",          "goal": "Print your current working directory.",               "hint": "pwd"},
+    2:  {"title": "What's here?",          "goal": "List the files in the current directory.",            "hint": "ls"},
+    3:  {"title": "Read a file",           "goal": "Display the contents of documents/readme.txt",        "hint": "cat FILENAME"},
+    4:  {"title": "Navigate",              "goal": "Change into the documents/ directory.",               "hint": "cd DIRNAME"},
+    5:  {"title": "Come back",             "goal": "Return to your home directory (/sandbox).",           "hint": "cd"},
+    6:  {"title": "Search in a file",      "goal": "Find lines containing \"berry\" in documents/fruits.txt", "hint": "grep PATTERN FILE"},
+    7:  {"title": "Count lines",           "goal": "Count how many fruits are listed in documents/fruits.txt", "hint": "wc -l FILE"},
+    8:  {"title": "Create a directory",    "goal": "Create a new directory called \"missions\" inside /sandbox.", "hint": "mkdir DIRNAME"},
+    9:  {"title": "Copy a file",           "goal": "Copy documents/readme.txt into the missions/ directory.", "hint": "cp SOURCE DESTINATION"},
+    10: {"title": "Combine commands",      "goal": "List files in /sandbox and pipe the output through sort.", "hint": "command1 | command2"},
+}
+
+
+@app.route("/api/tutorial", methods=["GET"])
+def get_tutorial():
+    """Return the current tutorial level and challenge info."""
+    active = os.path.exists("/tmp/tutorial_active")
+    if not active:
+        return jsonify({"active": False, "total": len(_TUTORIAL_LEVELS)})
+    try:
+        with open("/tmp/tutorial_level") as f:
+            level = int(f.read().strip())
+    except Exception:
+        level = 1
+    info = _TUTORIAL_LEVELS.get(level, {"title": "Complete!", "goal": "All levels cleared!", "hint": ""})
+    return jsonify({"active": True, "level": level, "total": len(_TUTORIAL_LEVELS), **info})
 
 
 # ── VOD Endpoints ──────────────────────────────────────────

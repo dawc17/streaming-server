@@ -40,6 +40,10 @@ RUN useradd --create-home --home-dir /sandbox --shell /bin/bash --no-user-group 
         --gid 0 learner \
     && mkdir -p /sandbox/projects /sandbox/documents /sandbox/scripts
 
+# ── Tutorial system ───────────────────────────────────────────────────────────
+COPY tutorial.sh /opt/tutorial/tutorial.sh
+RUN sed -i 's/\r//' /opt/tutorial/tutorial.sh && chmod +x /opt/tutorial/tutorial.sh
+
 # ── Restricted bashrc for learner ────────────────────────────────────────────
 COPY learner.bashrc /sandbox/.bashrc
 # Login shells (su -l) read .bash_profile; make it simply source .bashrc

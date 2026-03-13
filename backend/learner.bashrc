@@ -35,3 +35,6 @@ alias ..='cd ..'
 
 # Always land in /sandbox on new shell
 builtin cd /sandbox
+
+# ── Tutorial system ───────────────────────────────────────────────────────────
+[[ -f /opt/tutorial/tutorial.sh ]] && source /opt/tutorial/tutorial.sh

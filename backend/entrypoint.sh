@@ -33,6 +33,7 @@ tmux send-keys -t main 'echo "  ║   Viewers send commands via the livestream! 
 tmux send-keys -t main 'echo "  ╚══════════════════════════════════════════════════╝"' Enter
 tmux send-keys -t main 'echo ""' Enter
 tmux send-keys -t main 'echo "  Try: ls    cat documents/fruits.txt    pwd"' Enter
+tmux send-keys -t main 'echo "  Type: tutorial   — to start a guided challenge mode"' Enter
 tmux send-keys -t main 'echo ""' Enter
 
 # ── Start Flask API (foreground — keeps container alive) ──────────────────────
